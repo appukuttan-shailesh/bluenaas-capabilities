@@ -10,7 +10,6 @@ setup(
     version='0.0.1',
     author='Shailesh Appukuttan',
     author_email='shailesh.appukuttan@unic.cnrs-gif.fr',
-    package_data={'basalunit': json_files},
     url='https://github.com/appukuttan-shailesh/bluenaas_capabilities/',
     keywords = ['BlueNaaS', 'SciUnit', 'NEURON', 'python', 'validation framework'],
     license='MIT',
