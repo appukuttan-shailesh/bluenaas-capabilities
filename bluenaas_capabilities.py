@@ -2,32 +2,29 @@ import os
 import json
 import collections
 import sciunit
-import tornado.ioloop
-import tornado.web
-import tornado.websocket
 from neuron import h
 
-def flatten_dict(d, parent_key='', sep='__'):
-    items = []
-    for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, collections.MutableMapping):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-def unflatten_dict(d, sep='__'):
-    resultDict = dict()
-    for key, value in d.iteritems():
-        parts = key.split(sep)
-        d = resultDict
-        for part in parts[:-1]:
-            if part not in d:
-                d[part] = dict()
-            d = d[part]
-        d[parts[-1]] = value
-    return resultDict
+# def flatten_dict(d, parent_key='', sep='__'):
+#     items = []
+#     for k, v in d.items():
+#         new_key = parent_key + sep + k if parent_key else k
+#         if isinstance(v, collections.MutableMapping):
+#             items.extend(flatten_dict(v, new_key, sep=sep).items())
+#         else:
+#             items.append((new_key, v))
+#     return dict(items)
+#
+# def unflatten_dict(d, sep='__'):
+#     resultDict = dict()
+#     for key, value in d.iteritems():
+#         parts = key.split(sep)
+#         d = resultDict
+#         for part in parts[:-1]:
+#             if part not in d:
+#                 d[part] = dict()
+#             d = d[part]
+#         d[parts[-1]] = value
+#     return resultDict
 
 class BlueNaaS_Python_Model(sciunit.Capability):
 
@@ -108,6 +105,17 @@ class BlueNaaS_Python_Model(sciunit.Capability):
             for f_call in func_calls:
                 eval("f_call[0]{}".format(f_call[1]))
 
+    def run_simulation(self, update_dt=None):
+        # update_dt is an optional parameter that allows to breakdown a lengthy simulation into shorter chunks for more responsiveness
+        h.init()
+        h.finitialize(h.v_init)
+        flag = True if h.t + h.dt < h.tstop else False
+        while flag:
+            flag = True if h.t + h.dt < h.tstop and update_dt else False
+            h.continuerun(min(h.tstop, h.t + (update_dt if update_dt else h.tstop)))
+            sim_output = self.model.get_data()
+        return sim_output
+
     def get_data(self):
         recorded_vectors = self.get_recorded_vectors()
         # find time vector
@@ -139,81 +147,3 @@ class BlueNaaS_Python_Model(sciunit.Capability):
                              'mode':'lines', 'name':val}
                 data.append(data_item)
         return data
-
-    def setup_socket(self, update_dt=None):
-        port_number = self.get_socket_port()
-        if not port_number:
-            raise ValueError("Please specify a port number for web socket!")
-        self.port = port_number
-        self.app = tornado.web.Application([
-            (r'/socket', WebSocketHandler, {'model':self, 'update_dt':update_dt}),
-            (r"/(.*)", tornado.web.StaticFileHandler, {"path":r"www/"})
-            ])
-        self.app.listen(self.port)
-        tornado.ioloop.IOLoop.instance().start()
-
-
-class IndexHandler(tornado.web.RequestHandler):
-    @tornado.web.asynchronous
-    def get(self):
-        print("indexhandler::get")
-        self.render('index.html')
-
-
-class WebSocketHandler(tornado.websocket.WebSocketHandler):
-
-    clients = {}
-    client_count = 0
-    update_dt = None # ms
-
-    def initialize(self, model, update_dt=None):
-        self.model = model
-        WebSocketHandler.update_dt = update_dt
-
-    def do_setfields(self, parameters):
-        self.model.apply_parameters(unflatten_dict(parameters))
-        # flatten `parameters` json as HTML/JS don't use nested hierarchy
-        flattened_parameters = flatten_dict(parameters)
-        flattened_parameters.pop('FUNCTIONS', None)
-        self.send_message_to_all({'command': 'setfields', 'data': flattened_parameters})
-
-    def open(self, *args):
-        WebSocketHandler.client_count += 1
-        print("websockethandler::open")
-        self.id = WebSocketHandler.client_count
-        WebSocketHandler.clients[self.id] = self
-        self.do_setfields(self.model.default_parameters)
-
-    def on_message(self, message):
-        message = json.loads(message)
-        command = message['command']
-        if command == 'setfields':
-            parameters = message.get("parameters", {})
-            self.do_setfields(parameters)
-        elif command == 'run_simulation':
-            if "parameters" in message.keys():
-                self.do_setfields(message["parameters"])
-            h.init()
-            h.finitialize(h.v_init)
-            flag = True if h.t + h.dt < h.tstop else False
-            while flag:
-                flag = True if h.t + h.dt < h.tstop and WebSocketHandler.update_dt else False
-                h.continuerun(min(h.tstop, h.t + (WebSocketHandler.update_dt if WebSocketHandler.update_dt else h.tstop)))
-                sim_output = self.model.get_data()
-                self.send_message_to_all({'command': 'setgraph', 'data': sim_output})
-        else:
-            print("message received")
-            print(message)
-
-    def on_close(self):
-        print("websockethandler::on_close")
-        if self.id in WebSocketHandler.clients:
-            # remove client from the "list" of clients to notify on change
-            del WebSocketHandler.clients[self.id]
-
-    def send_message(self, message):
-        self.write_message(json.dumps(message))
-
-    def send_message_to_all(self, message):
-        for client in WebSocketHandler.clients.values():
-            client.send_message(message)
