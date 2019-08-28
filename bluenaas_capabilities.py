@@ -4,28 +4,6 @@ import collections
 import sciunit
 from neuron import h
 
-# def flatten_dict(d, parent_key='', sep='__'):
-#     items = []
-#     for k, v in d.items():
-#         new_key = parent_key + sep + k if parent_key else k
-#         if isinstance(v, collections.MutableMapping):
-#             items.extend(flatten_dict(v, new_key, sep=sep).items())
-#         else:
-#             items.append((new_key, v))
-#     return dict(items)
-#
-# def unflatten_dict(d, sep='__'):
-#     resultDict = dict()
-#     for key, value in d.iteritems():
-#         parts = key.split(sep)
-#         d = resultDict
-#         for part in parts[:-1]:
-#             if part not in d:
-#                 d[part] = dict()
-#             d = d[part]
-#         d[parts[-1]] = value
-#     return resultDict
-
 class BlueNaaS_Python_Model(sciunit.Capability):
 
     def get_model_path(self):
@@ -37,10 +15,7 @@ class BlueNaaS_Python_Model(sciunit.Capability):
     def get_recorded_vectors(self):
         raise NotImplementedError()
 
-    def get_socket_port(self):
-        raise NotImplementedError()
-
-    def initialize(self):
+    def initialize(self, compile=True):
         sciunit.Model.__init__(self)
 
         model_path, mod_files_path = self.get_model_path()
@@ -48,12 +23,13 @@ class BlueNaaS_Python_Model(sciunit.Capability):
             raise ValueError("Please specify the path to the model's file!")
 
         self.model_path = os.path.abspath(model_path)
-        if mod_files_path:
-            self.mod_files_path = os.path.abspath(mod_files_path)
-        else:
-            self.mod_files_path = os.path.abspath(os.path.dirname(self.model_path))
-        self.lib_path = "x86_64/.libs/libnrnmech.so.0" # path to mechanisms once compiled; change if required
-        self.compile_load_mod_files()
+        if compile:
+            if mod_files_path:
+                self.mod_files_path = os.path.abspath(mod_files_path)
+            else:
+                self.mod_files_path = os.path.abspath(os.path.dirname(self.model_path))
+            self.lib_path = os.path.join(self.mod_files_path, "x86_64/.libs/libnrnmech.so.0") # path to mechanisms once compiled; change if required
+            self.compile_load_mod_files()
         global_env = globals()
         local_env = {}
         exec(open(self.model_path).read(), global_env, local_env)
@@ -67,10 +43,12 @@ class BlueNaaS_Python_Model(sciunit.Capability):
             self.default_parameters = parameters
         self.apply_parameters(self.default_parameters)
 
+        return getattr(self, 'lib_path', None)
+
     def compile_load_mod_files(self):
-        if not os.path.isfile(os.path.join(self.mod_files_path, self.lib_path)):
+        if not os.path.isfile(self.lib_path):
             os.system("cd " + self.mod_files_path + "; nrnivmodl")
-            h.nrn_load_dll(str(os.path.join(self.mod_files_path, self.lib_path)))
+        h.nrn_load_dll(str(self.lib_path))
 
     def evaluate_dict(self, current_ref, d, func_calls):
         for param, param_value in d.items():
