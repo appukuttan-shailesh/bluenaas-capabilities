@@ -88,6 +88,7 @@ class BlueNaaS_Python_Model(sciunit.Capability):
         h.init()
         h.finitialize(h.v_init)
         flag = True if h.t + h.dt < h.tstop else False
+        sim_output = None
         while flag:
             flag = True if h.t + h.dt < h.tstop and update_dt else False
             h.continuerun(min(h.tstop, h.t + (update_dt if update_dt else h.tstop)))
@@ -100,8 +101,8 @@ class BlueNaaS_Python_Model(sciunit.Capability):
         time_vector = None
         for vector in recorded_vectors:
             for key, val in vector.items():
-                if val.lower() == "time":
-                    time_vector = getattr(self, key)
+                if key.lower() == "time":
+                    time_vector = getattr(self, val)
                     recorded_vectors = [item for item in recorded_vectors if item.keys()[0] != key]
                     break
         if time_vector == None:
@@ -110,18 +111,18 @@ class BlueNaaS_Python_Model(sciunit.Capability):
         data = []
         for vector in recorded_vectors:
             for key, val in vector.items():
-                if "[" in key:  # to handle arrays/lists
-                    ind = key.find("[")
-                    vector_name = key[:ind]
-                    vector_index = key[ind:]
+                if "[" in val:  # to handle arrays/lists
+                    ind = val.find("[")
+                    vector_name = val[:ind]
+                    vector_index = val[ind:]
                     exec("ref = getattr(self, '{}'){}".format(vector_name, vector_index))
                 else:
-                    ref = getattr(self, key)
+                    ref = getattr(self, val)
                 vector_values = ref.to_python()
                 if (len(vector_values) == 1) or (len(vector_values) == 2 and vector_values[0]==vector_values[1]):
                     vector_values = [vector_values[0]] * len(time_vector)
                 data_item = {'x':time_vector.to_python(),
                              'y':vector_values,
-                             'mode':'lines', 'name':val}
-                data.append(data_item)
+                             'mode':'lines', 'name':key}
+                data.append({key : data_item})
         return data

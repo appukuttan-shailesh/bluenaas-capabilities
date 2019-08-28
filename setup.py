@@ -7,7 +7,7 @@ import os
 
 setup(
     name='bluenaas_capabilities',
-    version='0.0.2',
+    version='0.0.3',
     author='Shailesh Appukuttan',
     author_email='shailesh.appukuttan@unic.cnrs-gif.fr',
     url='https://github.com/appukuttan-shailesh/bluenaas_capabilities/',
